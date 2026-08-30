@@ -575,25 +575,38 @@ function Editor() {
               {layout.roomLength} ft
             </span>
             {layout.objects.map((object) => (
-              <div
-                className={`editor-object editor-${object.kind}${
-                  dragging?.id === object.id ? ' is-dragging' : ''
-                }`}
-                key={object.id}
-                role="button"
-                tabIndex={0}
-                title={`${object.label} · drag to move`}
-                aria-label={`${object.label}, drag to move`}
-                onPointerDown={(event) => handlePointerDown(event, object)}
-                style={{
-                  left: `${(object.x / layout.roomWidth) * 100}%`,
-                  top: `${(object.y / layout.roomLength) * 100}%`,
-                  width: `${(object.width / layout.roomWidth) * 100}%`,
-                  height: `${(object.height / layout.roomLength) * 100}%`,
-                }}
-              >
-                {object.label}
-              </div>
+              (() => {
+                const objectState =
+                  layout.timeline.objectStates[currentBlock.id]?.[object.id] ??
+                  {
+                    x: object.x,
+                    y: object.y,
+                    removed: false,
+                  };
+
+                return (
+                  <div
+                    className={`editor-object editor-${object.kind}${
+                      dragging?.id === object.id ? ' is-dragging' : ''
+                    }${objectState.removed ? ' is-removed' : ''}`}
+                    key={object.id}
+                    role="button"
+                    tabIndex={objectState.removed ? -1 : 0}
+                    title={`${object.label} · drag to move`}
+                    aria-label={`${object.label}, drag to move`}
+                    aria-hidden={objectState.removed}
+                    onPointerDown={(event) => handlePointerDown(event, object)}
+                    style={{
+                      left: `${(objectState.x / layout.roomWidth) * 100}%`,
+                      top: `${(objectState.y / layout.roomLength) * 100}%`,
+                      width: `${(object.width / layout.roomWidth) * 100}%`,
+                      height: `${(object.height / layout.roomLength) * 100}%`,
+                    }}
+                  >
+                    {object.label}
+                  </div>
+                );
+              })()
             ))}
           </div>
           <p className="workspace-note">

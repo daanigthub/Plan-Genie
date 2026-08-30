@@ -747,11 +747,22 @@ body.app-page {
   text-transform: uppercase;
   touch-action: none;
   user-select: none;
-  transition: box-shadow 0.15s, transform 0.15s;
+  transition:
+    left 0.7s cubic-bezier(0.3, 0.8, 0.3, 1),
+    top 0.7s cubic-bezier(0.3, 0.8, 0.3, 1),
+    opacity 0.35s ease,
+    box-shadow 0.15s,
+    transform 0.7s cubic-bezier(0.3, 0.8, 0.3, 1);
 }
 
 .editor-object:active {
   cursor: grabbing;
+}
+
+.editor-object.is-removed {
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.72);
 }
 
 .editor-object:focus-visible {
