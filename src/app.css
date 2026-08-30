@@ -1078,7 +1078,9 @@ body.app-page {
   border: 1px solid var(--rule);
   border-radius: 12px;
   box-shadow: inset 0 0 0 8px rgba(51, 33, 92, 0.02);
-  zoom: var(--zoom, 1);
+  transform: scale(var(--zoom, 1));
+  transform-origin: top center;
+  margin-bottom: calc((var(--zoom, 1) - 1) * 100%);
 }
 
 /* Cap the height so tall rooms (a 200 x 200 ft hall) stay on screen. The
