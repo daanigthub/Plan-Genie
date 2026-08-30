@@ -773,6 +773,132 @@ body.app-page {
   border: 1px dashed #d8930f;
 }
 
+.custom-object-tools {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.custom-object-toggle,
+.custom-object-submit {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 11px;
+  color: var(--grape);
+  background: #fff;
+  border: 1px solid rgba(108, 63, 209, 0.28);
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: left;
+}
+
+.custom-object-toggle:hover,
+.custom-object-submit:hover {
+  color: #fff;
+  background: var(--grape);
+  border-color: var(--grape);
+}
+
+.custom-object-toggle:focus-visible,
+.custom-object-submit:focus-visible,
+.custom-template-button:focus-visible {
+  outline: 3px solid rgba(108, 63, 209, 0.2);
+  outline-offset: 2px;
+}
+
+.custom-object-form {
+  display: grid;
+  gap: 9px;
+  padding: 11px;
+  background: var(--panel);
+  border: 1px solid var(--rule-2);
+  border-radius: 9px;
+}
+
+.custom-object-form label {
+  display: grid;
+  gap: 4px;
+  color: var(--ink-70);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.custom-object-form input,
+.custom-object-form select {
+  width: 100%;
+  padding: 7px 8px;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.custom-object-form input:focus,
+.custom-object-form select:focus {
+  outline: 2px solid rgba(108, 63, 209, 0.2);
+  border-color: var(--grape);
+}
+
+.custom-object-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.custom-object-submit {
+  justify-content: center;
+  padding: 8px 10px;
+  color: #fff;
+  background: var(--grape);
+  border-color: var(--grape);
+  font-size: 11px;
+}
+
+.custom-template-list {
+  display: grid;
+  gap: 6px;
+  padding-top: 2px;
+}
+
+.custom-template-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px;
+  color: var(--ink-70);
+  background: var(--panel);
+  border: 1px solid var(--rule-2);
+  border-radius: 7px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  text-align: left;
+}
+
+.custom-template-button:hover {
+  color: var(--ink);
+  border-color: var(--grape);
+}
+
+.custom-template-button small {
+  color: var(--ink-40);
+  font-size: 9px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
 .tool-plus {
   margin-left: auto;
   color: var(--ink-40);
@@ -844,10 +970,61 @@ body.app-page {
 .workspace-scale {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   color: var(--ink-40);
   font-size: 12px;
   font-weight: 800;
+}
+
+.zoom-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 5px;
+  background: var(--panel);
+  border: 1px solid var(--rule-2);
+  border-radius: 999px;
+}
+
+.zoom-button {
+  width: 23px;
+  height: 23px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: var(--ink-70);
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  font-family: 'Fredoka', sans-serif;
+  font-size: 17px;
+  line-height: 1;
+}
+
+.zoom-button:hover {
+  color: #fff;
+  background: var(--grape);
+}
+
+.zoom-button:focus-visible,
+.zoom-slider:focus-visible {
+  outline: 3px solid rgba(108, 63, 209, 0.2);
+  outline-offset: 2px;
+}
+
+.zoom-slider {
+  width: 76px;
+  accent-color: var(--grape);
+  cursor: ew-resize;
+}
+
+.zoom-value {
+  min-width: 37px;
+  color: var(--ink);
+  font-size: 11px;
+  text-align: center;
 }
 
 .fit-toggle {
@@ -901,6 +1078,7 @@ body.app-page {
   border: 1px solid var(--rule);
   border-radius: 12px;
   box-shadow: inset 0 0 0 8px rgba(51, 33, 92, 0.02);
+  zoom: var(--zoom, 1);
 }
 
 /* Cap the height so tall rooms (a 200 x 200 ft hall) stay on screen. The
@@ -908,6 +1086,13 @@ body.app-page {
 .room-editor.is-fit {
   width: min(100%, calc(var(--fit-height) * var(--room-ratio)));
   --fit-height: clamp(240px, calc(100vh - 430px), 820px);
+}
+
+.room-viewport {
+  width: 100%;
+  max-height: clamp(240px, calc(100vh - 430px), 820px);
+  overflow: auto;
+  scrollbar-color: var(--grape) var(--panel);
 }
 
 .room-dimension {
@@ -1126,6 +1311,50 @@ body.app-page {
   color: #96620a;
   background: var(--amber-soft);
   border: 1px dashed #d8930f;
+}
+
+.editor-custom {
+  color: var(--ink-70);
+  background: #fff;
+  border: 1.5px solid #8d73cf;
+}
+
+.editor-custom.editor-category-table {
+  background: #fff;
+}
+
+.editor-custom.editor-category-object {
+  color: #fff;
+  background: var(--teal);
+  border-color: var(--teal);
+}
+
+.editor-custom.editor-category-zone {
+  color: #96620a;
+  background: var(--amber-soft);
+  border: 1px dashed #d8930f;
+}
+
+.editor-custom.editor-shape-circle {
+  border-radius: 50%;
+}
+
+.editor-custom.editor-shape-rect {
+  border-radius: 5px;
+}
+
+.editor-object.is-conflict {
+  border-color: var(--coral);
+  box-shadow:
+    0 0 0 3px var(--coral),
+    0 0 16px rgba(229, 72, 58, 0.72);
+}
+
+.editor-object.is-conflict.is-selected {
+  box-shadow:
+    0 0 0 3px var(--coral),
+    0 0 0 6px rgba(255, 178, 60, 0.38),
+    0 0 16px rgba(229, 72, 58, 0.72);
 }
 
 .workspace-note {

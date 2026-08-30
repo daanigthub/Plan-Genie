@@ -28,7 +28,11 @@ type ObjectKind =
   | 'stage'
   | 'buffet'
   | 'door'
-  | 'zone';
+  | 'zone'
+  | 'custom';
+
+type ObjectShape = 'circle' | 'rect';
+type ObjectCategory = 'table' | 'object' | 'zone';
 
 type LayoutObject = {
   id: string;
@@ -38,6 +42,18 @@ type LayoutObject = {
   y: number;
   width: number;
   height: number;
+  shape?: ObjectShape;
+  category?: ObjectCategory;
+  templateId?: string;
+};
+
+type CustomObjectTemplate = {
+  id: string;
+  label: string;
+  width: number;
+  height: number;
+  shape: ObjectShape;
+  category: ObjectCategory;
 };
 
 type StartingLayout = IntakeData & {
@@ -82,6 +98,7 @@ const INTAKE_STORAGE_KEY = 'planGenie.intake';
 const LAYOUT_STORAGE_KEY = 'planGenie.layout';
 const PROJECTS_STORAGE_KEY = 'planGenie.projects';
 const FIT_STORAGE_KEY = 'planGenie.fitToScreen';
+const CUSTOM_TEMPLATES_STORAGE_KEY = 'planGenie.customTemplates';
 
 const defaultTimelineBlocks: TimelineBlock[] = [
   { id: 'talk', label: 'Talk', startMinutes: 360, endMinutes: 395 },
@@ -137,6 +154,7 @@ function standardObjectSize(
       width: clampBetween(8, snapToGrid(roomWidth * 0.2), 60),
       height: clampBetween(8, snapToGrid(roomLength * 0.2), 60),
     },
+    custom: { width: 6, height: 4 },
   };
   const size = sizes[kind];
 
@@ -162,6 +180,141 @@ function formatFeetInches(feet: number): string {
 
 function isTableKind(kind: ObjectKind): boolean {
   return kind === 'round-table' || kind === 'rectangular-table';
+}
+
+function getObjectShape(object: Pick<LayoutObject, 'kind' | 'shape'>): ObjectShape {
+  return object.shape ?? (object.kind === 'round-table' ? 'circle' : 'rect');
+}
+
+function getObjectCategory(
+  object: Pick<LayoutObject, 'kind' | 'category'>,
+): ObjectCategory {
+  if (object.category) {
+    return object.category;
+  }
+  if (isTableKind(object.kind)) {
+    return 'table';
+  }
+  return object.kind === 'zone' ? 'zone' : 'object';
+}
+
+function isTableObject(object: Pick<LayoutObject, 'kind' | 'category'>): boolean {
+  return getObjectCategory(object) === 'table';
+}
+
+function readCustomTemplates(): CustomObjectTemplate[] {
+  try {
+    const saved = sessionStorage.getItem(CUSTOM_TEMPLATES_STORAGE_KEY);
+    if (!saved) {
+      return [];
+    }
+    const parsed = JSON.parse(saved) as CustomObjectTemplate[];
+    return Array.isArray(parsed)
+      ? parsed.filter(
+          (template) =>
+            typeof template.id === 'string' &&
+            typeof template.label === 'string' &&
+            Number(template.width) > 0 &&
+            Number(template.height) > 0 &&
+            (template.shape === 'circle' || template.shape === 'rect') &&
+            (template.category === 'table' ||
+              template.category === 'object' ||
+              template.category === 'zone'),
+        )
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeCustomTemplates(templates: CustomObjectTemplate[]) {
+  sessionStorage.setItem(
+    CUSTOM_TEMPLATES_STORAGE_KEY,
+    JSON.stringify(templates),
+  );
+}
+
+function objectsOverlap(first: LayoutObject, second: LayoutObject): boolean {
+  if (
+    getObjectCategory(first) === 'zone' ||
+    getObjectCategory(second) === 'zone'
+  ) {
+    return false;
+  }
+
+  const horizontalOverlap =
+    Math.min(first.x + first.width, second.x + second.width) -
+    Math.max(first.x, second.x);
+  const verticalOverlap =
+    Math.min(first.y + first.height, second.y + second.height) -
+    Math.max(first.y, second.y);
+  if (horizontalOverlap <= 0.01 || verticalOverlap <= 0.01) {
+    return false;
+  }
+
+  const firstIsCircle = getObjectShape(first) === 'circle';
+  const secondIsCircle = getObjectShape(second) === 'circle';
+  if (!firstIsCircle && !secondIsCircle) {
+    return true;
+  }
+
+  if (firstIsCircle && secondIsCircle) {
+    const firstRadius = Math.min(first.width, first.height) / 2;
+    const secondRadius = Math.min(second.width, second.height) / 2;
+    const firstCenter = { x: first.x + first.width / 2, y: first.y + first.height / 2 };
+    const secondCenter = {
+      x: second.x + second.width / 2,
+      y: second.y + second.height / 2,
+    };
+    return (
+      Math.hypot(firstCenter.x - secondCenter.x, firstCenter.y - secondCenter.y) <
+      firstRadius + secondRadius
+    );
+  }
+
+  const circle = firstIsCircle ? first : second;
+  const rectangle = firstIsCircle ? second : first;
+  const radius = Math.min(circle.width, circle.height) / 2;
+  const centerX = circle.x + circle.width / 2;
+  const centerY = circle.y + circle.height / 2;
+  const closestX = clampBetween(rectangle.x, centerX, rectangle.x + rectangle.width);
+  const closestY = clampBetween(rectangle.y, centerY, rectangle.y + rectangle.height);
+  return Math.hypot(centerX - closestX, centerY - closestY) < radius;
+}
+
+function getConflictIds(
+  layout: StoredLayout,
+  blockId: string,
+): Set<string> {
+  const activeObjects = layout.objects
+    .filter(
+      (object) =>
+        !getObjectBlockState(layout, blockId, object).removed &&
+        getObjectCategory(object) !== 'zone',
+    )
+    .map((object) => {
+      const state = getObjectBlockState(layout, blockId, object);
+      return { ...object, x: state.x, y: state.y };
+    });
+  const conflicts = new Set<string>();
+  for (let firstIndex = 0; firstIndex < activeObjects.length; firstIndex += 1) {
+    for (
+      let secondIndex = firstIndex + 1;
+      secondIndex < activeObjects.length;
+      secondIndex += 1
+    ) {
+      const first = activeObjects[firstIndex];
+      const second = activeObjects[secondIndex];
+      if (
+        (isTableObject(first) || isTableObject(second)) &&
+        objectsOverlap(first, second)
+      ) {
+        conflicts.add(first.id);
+        conflicts.add(second.id);
+      }
+    }
+  }
+  return conflicts;
 }
 
 function eventTitle(intake: Pick<IntakeData, 'eventName'>): string {
@@ -548,6 +701,7 @@ function newObject(
     buffet: 'Buffet station',
     door: 'Entrance / exit',
     zone: 'New zone',
+    custom: 'Custom object',
   };
   const { width, height } = standardObjectSize(kind, roomWidth, roomLength);
 
@@ -559,6 +713,28 @@ function newObject(
     y: placeInRoom((roomLength - height) / 2, height, roomLength),
     width,
     height,
+  };
+}
+
+function newCustomObject(
+  template: CustomObjectTemplate,
+  roomWidth: number,
+  roomLength: number,
+  objectNumber: number,
+): LayoutObject {
+  const width = Math.max(1, Math.min(template.width, roomWidth));
+  const height = Math.max(1, Math.min(template.height, roomLength));
+  return {
+    id: `custom-${Date.now()}-${objectNumber}`,
+    kind: 'custom',
+    label: template.label,
+    x: placeInRoom((roomWidth - width) / 2, width, roomWidth),
+    y: placeInRoom((roomLength - height) / 2, height, roomLength),
+    width,
+    height,
+    shape: template.shape,
+    category: template.category,
+    templateId: template.id,
   };
 }
 
@@ -609,6 +785,15 @@ function Editor() {
   const [fitToScreen, setFitToScreen] = useState(
     () => sessionStorage.getItem(FIT_STORAGE_KEY) !== '0',
   );
+  const [zoomPercent, setZoomPercent] = useState(100);
+  const [customTemplates, setCustomTemplates] = useState(readCustomTemplates);
+  const [showCustomForm, setShowCustomForm] = useState(false);
+  const [customName, setCustomName] = useState('');
+  const [customWidth, setCustomWidth] = useState('6');
+  const [customHeight, setCustomHeight] = useState('4');
+  const [customShape, setCustomShape] = useState<ObjectShape>('rect');
+  const [customCategory, setCustomCategory] =
+    useState<ObjectCategory>('object');
 
   useEffect(() => {
     if (layout) {
@@ -619,6 +804,10 @@ function Editor() {
   useEffect(() => {
     sessionStorage.setItem(FIT_STORAGE_KEY, fitToScreen ? '1' : '0');
   }, [fitToScreen]);
+
+  useEffect(() => {
+    writeCustomTemplates(customTemplates);
+  }, [customTemplates]);
 
   useEffect(() => {
     if (!dragging || !layout) {
@@ -834,14 +1023,7 @@ function Editor() {
 
   const activeLayout = layout;
 
-  function addObject(kind: ObjectKind) {
-    const object = newObject(
-      kind,
-      activeLayout.roomWidth,
-      activeLayout.roomLength,
-      activeLayout.objects.length + 1,
-    );
-
+  function addObjectToLayout(object: LayoutObject) {
     setLayout((current) => {
       if (!current) {
         return current;
@@ -871,6 +1053,51 @@ function Editor() {
       };
     });
     setSelectedObjectId(object.id);
+  }
+
+  function addObject(kind: ObjectKind) {
+    addObjectToLayout(
+      newObject(
+        kind,
+        activeLayout.roomWidth,
+        activeLayout.roomLength,
+        activeLayout.objects.length + 1,
+      ),
+    );
+  }
+
+  function addCustomTemplate(template: CustomObjectTemplate) {
+    addObjectToLayout(
+      newCustomObject(
+        template,
+        activeLayout.roomWidth,
+        activeLayout.roomLength,
+        activeLayout.objects.length + 1,
+      ),
+    );
+  }
+
+  function handleCustomObjectSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const label = customName.trim();
+    const width = Number(customWidth);
+    const height = Number(customHeight);
+    if (!label || !Number.isFinite(width) || !Number.isFinite(height)) {
+      return;
+    }
+
+    const template: CustomObjectTemplate = {
+      id: `template-${Date.now()}`,
+      label,
+      width: Math.max(1, width),
+      height: Math.max(1, height),
+      shape: customShape,
+      category: customCategory,
+    };
+    setCustomTemplates((current) => [...current, template]);
+    addCustomTemplate(template);
+    setCustomName('');
+    setShowCustomForm(false);
   }
 
   function handlePointerDown(
@@ -981,6 +1208,8 @@ function Editor() {
     getObjectBlockState(layout, currentBlock.id, object).removed,
   );
   const gridStep = getGridStep(layout.roomWidth, layout.roomLength);
+  const conflictIds = getConflictIds(layout, currentBlock.id);
+  const conflictCount = conflictIds.size;
 
   function toggleObjectRemoval(object: LayoutObject) {
     const currentState = getObjectBlockState(
@@ -1115,6 +1344,111 @@ function Editor() {
             ))}
           </div>
 
+          <div className="custom-object-tools">
+            <button
+              className="custom-object-toggle"
+              type="button"
+              onClick={() => setShowCustomForm((current) => !current)}
+              aria-expanded={showCustomForm}
+            >
+              <span>Create custom object</span>
+              <span aria-hidden="true">{showCustomForm ? '−' : '+'}</span>
+            </button>
+            {showCustomForm ? (
+              <form
+                className="custom-object-form"
+                onSubmit={handleCustomObjectSubmit}
+              >
+                <label>
+                  <span>Name</span>
+                  <input
+                    type="text"
+                    value={customName}
+                    onChange={(event) => setCustomName(event.target.value)}
+                    placeholder="e.g. Sponsor booth"
+                    maxLength={60}
+                    required
+                  />
+                </label>
+                <div className="custom-object-fields">
+                  <label>
+                    <span>Width (ft)</span>
+                    <input
+                      type="number"
+                      min="1"
+                      step="0.5"
+                      value={customWidth}
+                      onChange={(event) => setCustomWidth(event.target.value)}
+                      required
+                    />
+                  </label>
+                  <label>
+                    <span>Height (ft)</span>
+                    <input
+                      type="number"
+                      min="1"
+                      step="0.5"
+                      value={customHeight}
+                      onChange={(event) => setCustomHeight(event.target.value)}
+                      required
+                    />
+                  </label>
+                </div>
+                <div className="custom-object-fields">
+                  <label>
+                    <span>Shape</span>
+                    <select
+                      value={customShape}
+                      onChange={(event) =>
+                        setCustomShape(event.target.value as ObjectShape)
+                      }
+                    >
+                      <option value="rect">Rectangle</option>
+                      <option value="circle">Circle</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Type</span>
+                    <select
+                      value={customCategory}
+                      onChange={(event) =>
+                        setCustomCategory(
+                          event.target.value as ObjectCategory,
+                        )
+                      }
+                    >
+                      <option value="object">Object</option>
+                      <option value="table">Table</option>
+                      <option value="zone">Zone</option>
+                    </select>
+                  </label>
+                </div>
+                <button className="custom-object-submit" type="submit">
+                  Add and use object
+                </button>
+              </form>
+            ) : null}
+            {customTemplates.length > 0 ? (
+              <div className="custom-template-list">
+                <span className="tool-list-heading">Saved custom objects</span>
+                {customTemplates.map((template) => (
+                  <button
+                    className="custom-template-button"
+                    type="button"
+                    key={template.id}
+                    onClick={() => addCustomTemplate(template)}
+                  >
+                    <span>{template.label}</span>
+                    <small>
+                      {formatFeetInches(template.width)} ×{' '}
+                      {formatFeetInches(template.height)}
+                    </small>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+
           {removedInBlock.length > 0 ? (
             <div className="selected-object-panel" aria-live="polite">
               <p className="tool-list-heading">Removed in this block</p>
@@ -1134,7 +1468,10 @@ function Editor() {
           <div className="editor-sidebar-spacer" />
           <div className="object-count">
             <strong>{layout.objects.length}</strong>
-            <span>Objects placed</span>
+            <span>
+              Objects placed
+              {conflictCount > 0 ? ` · ${conflictCount} in conflict` : ''}
+            </span>
           </div>
         </aside>
 
@@ -1157,37 +1494,85 @@ function Editor() {
                 className={`fit-toggle${fitToScreen ? ' is-active' : ''}`}
                 type="button"
                 aria-pressed={fitToScreen}
-                onClick={() => setFitToScreen((current) => !current)}
+                onClick={() =>
+                  setFitToScreen((current) => {
+                    const next = !current;
+                    if (next) {
+                      setZoomPercent(100);
+                    }
+                    return next;
+                  })
+                }
               >
                 Fit to screen
               </button>
+              <div className="zoom-controls" aria-label="Zoom controls">
+                <button
+                  className="zoom-button"
+                  type="button"
+                  onClick={() => {
+                    setFitToScreen(false);
+                    setZoomPercent((current) => Math.max(25, current - 10));
+                  }}
+                  aria-label="Zoom out"
+                >
+                  −
+                </button>
+                <input
+                  className="zoom-slider"
+                  type="range"
+                  min="25"
+                  max="200"
+                  step="5"
+                  value={zoomPercent}
+                  aria-label="Zoom percentage"
+                  onChange={(event) => {
+                    setZoomPercent(Number(event.target.value));
+                    setFitToScreen(false);
+                  }}
+                />
+                <span className="zoom-value">{zoomPercent}%</span>
+                <button
+                  className="zoom-button"
+                  type="button"
+                  onClick={() => {
+                    setFitToScreen(false);
+                    setZoomPercent((current) => Math.min(200, current + 10));
+                  }}
+                  aria-label="Zoom in"
+                >
+                  +
+                </button>
+              </div>
             </div>
           </div>
 
-          <div
-            className={`room-editor${fitToScreen ? ' is-fit' : ''}`}
-            ref={roomRef}
-            style={
-              {
-                aspectRatio: `${layout.roomWidth} / ${layout.roomLength}`,
-                '--room-ratio': `${layout.roomWidth / layout.roomLength}`,
-                '--grid-width': `${(gridStep / layout.roomWidth) * 100}%`,
-                '--grid-height': `${(gridStep / layout.roomLength) * 100}%`,
-              } as CSSProperties
-            }
-            onPointerDown={(event) => {
-              if (event.target === event.currentTarget) {
-                setSelectedObjectId(null);
+          <div className="room-viewport">
+            <div
+              className={`room-editor${fitToScreen ? ' is-fit' : ''}`}
+              ref={roomRef}
+              style={
+                {
+                  aspectRatio: `${layout.roomWidth} / ${layout.roomLength}`,
+                  '--room-ratio': `${layout.roomWidth / layout.roomLength}`,
+                  '--grid-width': `${(gridStep / layout.roomWidth) * 100}%`,
+                  '--grid-height': `${(gridStep / layout.roomLength) * 100}%`,
+                  '--zoom': `${zoomPercent / 100}`,
+                } as CSSProperties
               }
-            }}
-          >
+              onPointerDown={(event) => {
+                if (event.target === event.currentTarget) {
+                  setSelectedObjectId(null);
+                }
+              }}
+            >
             <span className="room-dimension room-dimension-width">
               {layout.roomWidth} ft
             </span>
             <span className="room-dimension room-dimension-length">
               {layout.roomLength} ft
             </span>
-            {layout.objects.map((object) => {
+              {layout.objects.map((object) => {
               const objectState = getObjectBlockState(
                 layout,
                 currentBlock.id,
@@ -1196,16 +1581,21 @@ function Editor() {
               const isCompact =
                 object.width / layout.roomWidth < 0.07 ||
                 object.height / layout.roomLength < 0.07;
+              const isConflict = conflictIds.has(object.id);
+              const objectShape = getObjectShape(object);
+              const objectCategory = getObjectCategory(object);
 
               return (
                 <div
-                  className={`editor-object editor-${object.kind}${
+                  className={`editor-object editor-${object.kind} editor-shape-${objectShape} editor-category-${objectCategory}${
                     dragging?.id === object.id ? ' is-dragging' : ''
                   }${
                     resizing?.id === object.id ? ' is-resizing' : ''
                   }${
                     selectedObjectId === object.id ? ' is-selected' : ''
                   }${isCompact ? ' is-compact' : ''}${
+                    isConflict ? ' is-conflict' : ''
+                  }${
                     objectState.removed ? ' is-removed' : ''
                   }`}
                   key={object.id}
@@ -1214,12 +1604,16 @@ function Editor() {
                   title={`${object.label} · ${
                     objectState.removed
                       ? 'removed from this block'
-                      : `${formatFeetInches(object.width)} × ${formatFeetInches(object.height)}`
+                      : `${formatFeetInches(object.width)} × ${formatFeetInches(object.height)}${
+                          isConflict ? ' · overlaps another object' : ''
+                        }`
                   }`}
                   aria-label={`${object.label}, ${
                     objectState.removed
                       ? 'removed from this block'
-                      : `${formatFeetInches(object.width)} by ${formatFeetInches(object.height)}`
+                      : `${formatFeetInches(object.width)} by ${formatFeetInches(object.height)}${
+                          isConflict ? ', overlaps another object' : ''
+                        }`
                   }`}
                   aria-hidden={false}
                   onPointerDown={(event) => handlePointerDown(event, object)}
@@ -1232,29 +1626,16 @@ function Editor() {
                 >
                   <span className="object-label">{object.label}</span>
                   {selectedObjectId === object.id &&
-                  isTableKind(object.kind) &&
+                  !objectState.removed &&
+                  (isTableObject(object) || object.kind === 'custom') &&
                   !objectState.removed ? (
                     <span className="object-size">
                       {formatFeetInches(object.width)} ×{' '}
                       {formatFeetInches(object.height)}
                     </span>
                   ) : null}
-                  {selectedObjectId === object.id && !objectState.removed ? (
-                    <button
-                      className="object-remove"
-                      type="button"
-                      aria-label={`Remove ${object.label} from this block`}
-                      onPointerDown={(event) => event.stopPropagation()}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        toggleObjectRemoval(object);
-                      }}
-                    >
-                      Remove
-                    </button>
-                  ) : null}
                   {selectedObjectId === object.id &&
-                  isTableKind(object.kind) &&
+                  isTableObject(object) &&
                   !objectState.removed ? (
                     <span
                       className="object-resize"
@@ -1273,9 +1654,24 @@ function Editor() {
                       }
                     />
                   ) : null}
+                  {selectedObjectId === object.id && !objectState.removed ? (
+                    <button
+                      className="object-remove"
+                      type="button"
+                      aria-label={`Remove ${object.label} from this block`}
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        toggleObjectRemoval(object);
+                      }}
+                    >
+                      Remove
+                    </button>
+                  ) : null}
                 </div>
               );
             })}
+            </div>
           </div>
           <p className="workspace-note">
             Drag objects to position them. Click a table to see its size,
