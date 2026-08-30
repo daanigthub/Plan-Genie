@@ -41,6 +41,80 @@ type StartingLayout = IntakeData & {
   objects: LayoutObject[];
 };
 
+type TimelineBlock = {
+  id: string;
+  label: string;
+  startMinutes: number;
+  endMinutes: number;
+};
+
+type ObjectBlockState = {
+  x: number;
+  y: number;
+  removed: boolean;
+};
+
+type TimelineState = {
+  blocks: TimelineBlock[];
+  objectStates: Record<string, Record<string, ObjectBlockState>>;
+};
+
+type StoredLayout = StartingLayout & {
+  timeline: TimelineState;
+};
+
+const defaultTimelineBlocks: TimelineBlock[] = [
+  { id: 'talk', label: 'Talk', startMinutes: 360, endMinutes: 395 },
+  { id: 'dinner', label: 'Dinner', startMinutes: 395, endMinutes: 420 },
+  { id: 'prayer', label: 'Prayer', startMinutes: 420, endMinutes: 440 },
+];
+
+function createTimeline(objects: LayoutObject[]): TimelineState {
+  return {
+    blocks: defaultTimelineBlocks.map((block) => ({ ...block })),
+    objectStates: Object.fromEntries(
+      defaultTimelineBlocks.map((block) => [
+        block.id,
+        Object.fromEntries(
+          objects.map((object) => [
+            object.id,
+            { x: object.x, y: object.y, removed: false },
+          ]),
+        ),
+      ]),
+    ),
+  };
+}
+
+function withTimeline(
+  layout: StartingLayout & { timeline?: TimelineState },
+): StoredLayout {
+  const timeline = layout.timeline ?? createTimeline(layout.objects);
+  const objectStates = Object.fromEntries(
+    timeline.blocks.map((block) => [
+      block.id,
+      Object.fromEntries(
+        layout.objects.map((object) => [
+          object.id,
+          timeline.objectStates[block.id]?.[object.id] ?? {
+            x: object.x,
+            y: object.y,
+            removed: false,
+          },
+        ]),
+      ),
+    ]),
+  );
+
+  return {
+    ...layout,
+    timeline: {
+      blocks: timeline.blocks.map((block) => ({ ...block })),
+      objectStates,
+    },
+  };
+}
+
 function generateStartingLayout(intake: IntakeData): StartingLayout {
   const margin = Math.min(4, intake.roomWidth / 10, intake.roomLength / 10);
   const stageWidth = Math.min(16, intake.roomWidth * 0.3);
@@ -116,10 +190,14 @@ function generateStartingLayout(intake: IntakeData): StartingLayout {
   return { ...intake, objects };
 }
 
-function getSavedLayout(): StartingLayout | null {
+function getSavedLayout(): StoredLayout | null {
   try {
     const saved = sessionStorage.getItem('planGenie.layout');
-    return saved ? (JSON.parse(saved) as StartingLayout) : null;
+    return saved
+      ? withTimeline(JSON.parse(saved) as StartingLayout & {
+          timeline?: TimelineState;
+        })
+      : null;
   } catch {
     return null;
   }
@@ -171,7 +249,7 @@ function newObject(
 }
 
 function Editor() {
-  const [layout, setLayout] = useState<StartingLayout | null>(getSavedLayout);
+  const [layout, setLayout] = useState<StoredLayout | null>(getSavedLayout);
   const [dragging, setDragging] = useState<{
     id: string;
     offsetX: number;
@@ -446,7 +524,7 @@ function IntakeForm() {
     sessionStorage.setItem('planGenie.intake', JSON.stringify(intake));
     sessionStorage.setItem(
       'planGenie.layout',
-      JSON.stringify(generateStartingLayout(intake)),
+      JSON.stringify(withTimeline(generateStartingLayout(intake))),
     );
     window.location.assign('/app/editor');
   }
