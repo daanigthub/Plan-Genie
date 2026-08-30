@@ -69,6 +69,14 @@ const defaultTimelineBlocks: TimelineBlock[] = [
   { id: 'prayer', label: 'Prayer', startMinutes: 420, endMinutes: 440 },
 ];
 
+function formatTime(minutes: number): string {
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  const period = hours >= 12 ? 'PM' : 'AM';
+  const displayHours = hours % 12 || 12;
+  return `${displayHours}:${String(remainingMinutes).padStart(2, '0')} ${period}`;
+}
+
 function createTimeline(objects: LayoutObject[]): TimelineState {
   return {
     blocks: defaultTimelineBlocks.map((block) => ({ ...block })),
@@ -258,6 +266,14 @@ function Editor() {
     height: number;
   } | null>(null);
   const roomRef = useRef<HTMLDivElement>(null);
+  const timelineRef = useRef<HTMLDivElement>(null);
+  const timelineStart = layout?.timeline.blocks[0]?.startMinutes ?? 0;
+  const timelineEnd =
+    layout?.timeline.blocks[layout.timeline.blocks.length - 1]?.endMinutes ??
+    timelineStart;
+  const [playheadMinutes, setPlayheadMinutes] = useState(timelineStart);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isScrubbing, setIsScrubbing] = useState(false);
 
   useEffect(() => {
     if (layout) {
@@ -325,6 +341,66 @@ function Editor() {
     };
   }, [dragging, layout?.roomWidth, layout?.roomLength]);
 
+  useEffect(() => {
+    if (!isPlaying) {
+      return;
+    }
+
+    const startedAt = performance.now();
+    const duration = 15000;
+    let animationFrame = 0;
+    setPlayheadMinutes(timelineStart);
+
+    function animate(now: number) {
+      const progress = Math.min(1, (now - startedAt) / duration);
+      setPlayheadMinutes(
+        timelineStart + (timelineEnd - timelineStart) * progress,
+      );
+
+      if (progress < 1) {
+        animationFrame = requestAnimationFrame(animate);
+      } else {
+        setIsPlaying(false);
+      }
+    }
+
+    animationFrame = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(animationFrame);
+  }, [isPlaying, timelineEnd, timelineStart]);
+
+  useEffect(() => {
+    if (!isScrubbing) {
+      return;
+    }
+
+    function handleTimelinePointerMove(event: PointerEvent) {
+      const track = timelineRef.current;
+      if (!track) {
+        return;
+      }
+
+      const bounds = track.getBoundingClientRect();
+      const position = Math.max(
+        0,
+        Math.min(1, (event.clientX - bounds.left) / bounds.width),
+      );
+      setPlayheadMinutes(
+        timelineStart + (timelineEnd - timelineStart) * position,
+      );
+    }
+
+    function handleTimelinePointerUp() {
+      setIsScrubbing(false);
+    }
+
+    window.addEventListener('pointermove', handleTimelinePointerMove);
+    window.addEventListener('pointerup', handleTimelinePointerUp);
+    return () => {
+      window.removeEventListener('pointermove', handleTimelinePointerMove);
+      window.removeEventListener('pointerup', handleTimelinePointerUp);
+    };
+  }, [isScrubbing, timelineEnd, timelineStart]);
+
   if (!layout) {
     return (
       <main className="placeholder-shell">
@@ -382,6 +458,37 @@ function Editor() {
       width: object.width,
       height: object.height,
     });
+  }
+
+  const currentBlock =
+    layout.timeline.blocks.find(
+      (block) =>
+        playheadMinutes >= block.startMinutes &&
+        playheadMinutes < block.endMinutes,
+    ) ?? layout.timeline.blocks[layout.timeline.blocks.length - 1];
+  const playheadProgress =
+    timelineEnd === timelineStart
+      ? 0
+      : (playheadMinutes - timelineStart) / (timelineEnd - timelineStart);
+
+  function handleTimelinePointerDown(
+    event: ReactPointerEvent<HTMLDivElement>,
+  ) {
+    const track = timelineRef.current;
+    if (!track) {
+      return;
+    }
+
+    const bounds = track.getBoundingClientRect();
+    const position = Math.max(
+      0,
+      Math.min(1, (event.clientX - bounds.left) / bounds.width),
+    );
+    setIsPlaying(false);
+    setIsScrubbing(true);
+    setPlayheadMinutes(
+      timelineStart + (timelineEnd - timelineStart) * position,
+    );
   }
 
   return (
@@ -494,6 +601,65 @@ function Editor() {
           </p>
         </section>
       </div>
+
+      <section className="timeline-dock" aria-label="Event timeline">
+        <div className="timeline-inner">
+          <div className="timeline-header">
+            <div>
+              <p className="sidebar-kicker">Event timeline</p>
+              <strong>{currentBlock.label}</strong>
+              <span> · {formatTime(Math.round(playheadMinutes))}</span>
+            </div>
+            <button
+              className="timeline-play"
+              type="button"
+              onClick={() => setIsPlaying((playing) => !playing)}
+              aria-label={isPlaying ? 'Pause timeline' : 'Play timeline'}
+            >
+              <span aria-hidden="true">{isPlaying ? 'Ⅱ' : '▶'}</span>
+              {isPlaying ? 'Pause' : 'Play'}
+            </button>
+          </div>
+
+          <div
+            className="timeline-track"
+            ref={timelineRef}
+            onPointerDown={handleTimelinePointerDown}
+            role="slider"
+            aria-label="Event timeline position"
+            aria-valuemin={timelineStart}
+            aria-valuemax={timelineEnd}
+            aria-valuenow={Math.round(playheadMinutes)}
+            tabIndex={0}
+          >
+            <div className="timeline-segments">
+              {layout.timeline.blocks.map((block) => (
+                <div
+                  className={`timeline-segment${
+                    currentBlock.id === block.id ? ' is-current' : ''
+                  }`}
+                  key={block.id}
+                  style={{
+                    flex: `${block.endMinutes - block.startMinutes} 1 0%`,
+                  }}
+                >
+                  <strong>{block.label}</strong>
+                  <span>
+                    {formatTime(block.startMinutes)}–{formatTime(block.endMinutes)}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div
+              className="timeline-playhead"
+              style={{ left: `${playheadProgress * 100}%` }}
+              aria-hidden="true"
+            >
+              <span>{formatTime(Math.round(playheadMinutes))}</span>
+            </div>
+          </div>
+        </div>
+      </section>
     </main>
   );
 }
