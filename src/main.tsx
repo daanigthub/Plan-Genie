@@ -87,11 +87,18 @@ type ProjectRecord = {
   createdAt: number;
   intake: IntakeData;
   layout: StoredLayout;
+  floorPlan?: FloorPlanDocument;
 };
 
 type ProjectStore = {
   activeId: string | null;
   projects: ProjectRecord[];
+};
+
+type FloorPlanDocument = {
+  name: string;
+  dataUrl: string;
+  size: number;
 };
 
 const INTAKE_STORAGE_KEY = 'planGenie.intake';
@@ -566,7 +573,13 @@ function saveActiveProjectKeys(intake: IntakeData, layout: StoredLayout) {
 }
 
 function writeProjectStore(store: ProjectStore) {
-  sessionStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(store));
+  try {
+    sessionStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(store));
+  } catch {
+    throw new Error(
+      'This PDF is too large to save in this browser session. Try a smaller PDF.',
+    );
+  }
 }
 
 function readProjectStore(): ProjectStore | null {
@@ -651,13 +664,17 @@ function persistActiveLayout(layout: StoredLayout) {
   writeProjectStore({ activeId, projects });
 }
 
-function createProjectFromIntake(intake: IntakeData): ProjectRecord {
+function createProjectFromIntake(
+  intake: IntakeData,
+  floorPlan?: FloorPlanDocument,
+): ProjectRecord {
   const layout = withTimeline(generateStartingLayout(intake));
   const project: ProjectRecord = {
     id: `project-${Date.now()}`,
     createdAt: Date.now(),
     intake,
     layout,
+    floorPlan,
   };
   const store = getProjectStore();
   writeProjectStore({
@@ -666,6 +683,22 @@ function createProjectFromIntake(intake: IntakeData): ProjectRecord {
   });
   saveActiveProjectKeys(intake, layout);
   return project;
+}
+
+function readFileAsDataUrl(file: File): Promise<FloorPlanDocument> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () =>
+      typeof reader.result === 'string'
+        ? resolve({
+            name: file.name,
+            dataUrl: reader.result,
+            size: file.size,
+          })
+        : reject(new Error('The PDF could not be read.'));
+    reader.onerror = () => reject(new Error('The PDF could not be read.'));
+    reader.readAsDataURL(file);
+  });
 }
 
 function switchToProject(id: string): ProjectRecord | null {
@@ -746,6 +779,13 @@ function Editor() {
         ?.layout ?? getSavedLayout()
     );
   });
+  const [floorPlan, setFloorPlan] = useState<FloorPlanDocument | undefined>(
+    () => {
+      const store = getProjectStore();
+      return store.projects.find((project) => project.id === store.activeId)
+        ?.floorPlan;
+    },
+  );
   const [projects, setProjects] = useState(
     () => getProjectStore().projects,
   );
@@ -1250,6 +1290,7 @@ function Editor() {
     }
     setActiveProjectId(project.id);
     setLayout(project.layout);
+    setFloorPlan(project.floorPlan);
     setProjects(getProjectStore().projects);
     setSelectedObjectId(null);
     setDragging(null);
@@ -1547,6 +1588,26 @@ function Editor() {
             </div>
           </div>
 
+          {floorPlan ? (
+            <details className="floor-plan-reference">
+              <summary>
+                <span>Floor plan PDF</span>
+                <strong>{floorPlan.name}</strong>
+              </summary>
+              <div className="floor-plan-preview">
+                <iframe
+                  title={`Floor plan PDF: ${floorPlan.name}`}
+                  src={floorPlan.dataUrl}
+                />
+              </div>
+            </details>
+          ) : (
+            <p className="floor-plan-empty">
+              No floor plan PDF attached. Use the manual setup controls in
+              Intake to start from dimensions.
+            </p>
+          )}
+
           <div className="room-viewport">
             <div
               className={`room-editor${fitToScreen ? ' is-fit' : ''}`}
@@ -1751,12 +1812,30 @@ function IntakeForm() {
   const [chairs, setChairs] = useState('');
   const [roomWidth, setRoomWidth] = useState('');
   const [roomLength, setRoomLength] = useState('');
-  const [fileName, setFileName] = useState('');
+  const [floorPlanFile, setFloorPlanFile] = useState<File | null>(null);
+  const [fileError, setFileError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [projects] = useState(() => getProjectStore().projects);
   const [activeProjectId] = useState(() => getProjectStore().activeId);
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
-    setFileName(event.target.files?.[0]?.name ?? '');
+    const file = event.target.files?.[0] ?? null;
+    if (
+      file &&
+      file.type !== 'application/pdf' &&
+      !file.name.toLowerCase().endsWith('.pdf')
+    ) {
+      setFloorPlanFile(null);
+      setFileError('Please choose a PDF floor plan.');
+      return;
+    }
+    if (file && file.size > 2 * 1024 * 1024) {
+      setFloorPlanFile(null);
+      setFileError('Please choose a PDF smaller than 2 MB.');
+      return;
+    }
+    setFileError('');
+    setFloorPlanFile(file);
   }
 
   function openProject(id: string) {
@@ -1766,8 +1845,9 @@ function IntakeForm() {
     window.location.assign('/app/editor');
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setIsSubmitting(true);
 
     const intake: IntakeData = {
       roundTables: Number(roundTables),
@@ -1780,8 +1860,20 @@ function IntakeForm() {
       eventName: eventName.trim(),
     };
 
-    createProjectFromIntake(intake);
-    window.location.assign('/app/editor');
+    try {
+      const floorPlan = floorPlanFile
+        ? await readFileAsDataUrl(floorPlanFile)
+        : undefined;
+      createProjectFromIntake(intake, floorPlan);
+      window.location.assign('/app/editor');
+    } catch (error) {
+      setFileError(
+        error instanceof Error
+          ? error.message
+          : 'The project could not be saved.',
+      );
+      setIsSubmitting(false);
+    }
   }
 
   return (
@@ -1834,6 +1926,40 @@ function IntakeForm() {
         </p>
 
         <form onSubmit={handleSubmit}>
+          <fieldset className="floor-plan-intake">
+            <legend>Start with a floor plan PDF</legend>
+            <label className="file-field">
+              <span>
+                Upload your hall plan <small>(PDF, up to 2 MB)</small>
+              </span>
+              <input
+                type="file"
+                accept="application/pdf,.pdf"
+                onChange={handleFileChange}
+              />
+              <span className="file-button">Choose PDF</span>
+              <span className="file-name">
+                {floorPlanFile?.name || 'No PDF selected'}
+              </span>
+            </label>
+            {fileError ? (
+              <p className="field-error" role="alert">
+                {fileError}
+              </p>
+            ) : (
+              <p className="field-note">
+                Your PDF will be saved to this project and available beside
+                the layout while you plan.
+              </p>
+            )}
+          </fieldset>
+
+          <fieldset className="manual-setup">
+            <legend>Manual setup</legend>
+            <p className="manual-setup-copy">
+              No PDF? Enter the room and seating details below to start from a
+              blank plan.
+            </p>
           <fieldset>
             <legend>Event</legend>
             <div className="field-grid">
@@ -1947,28 +2073,11 @@ function IntakeForm() {
               </label>
             </div>
           </fieldset>
-
-          <fieldset>
-            <legend>Floor plan</legend>
-            <label className="file-field">
-              <span>Floor plan PDF <small>(optional for now)</small></span>
-              <input
-                type="file"
-                accept="application/pdf,.pdf"
-                onChange={handleFileChange}
-              />
-              <span className="file-button">Choose PDF</span>
-              <span className="file-name">
-                {fileName || 'No file selected'}
-              </span>
-            </label>
-            <p className="field-note">
-              We’ll keep the file name for now. The PDF is not read or parsed.
-            </p>
           </fieldset>
 
-          <button className="form-submit" type="submit">
-            Create starting layout <span>→</span>
+          <button className="form-submit" type="submit" disabled={isSubmitting}>
+            {isSubmitting ? 'Saving project…' : 'Create starting layout'}{' '}
+            {!isSubmitting ? <span>→</span> : null}
           </button>
         </form>
       </section>
