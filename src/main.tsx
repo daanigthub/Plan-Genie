@@ -42,6 +42,7 @@ type LayoutObject = {
   y: number;
   width: number;
   height: number;
+  rotation?: number;
   shape?: ObjectShape;
   category?: ObjectCategory;
   templateId?: string;
@@ -765,6 +766,7 @@ function newCustomObject(
     y: placeInRoom((roomLength - height) / 2, height, roomLength),
     width,
     height,
+    rotation: 0,
     shape: template.shape,
     category: template.category,
     templateId: template.id,
@@ -1156,7 +1158,7 @@ function Editor() {
     }
 
     const target = event.target as HTMLElement;
-    if (target.closest('.object-remove, .object-resize')) {
+    if (target.closest('.object-remove, .object-rotate, .object-resize')) {
       return;
     }
 
@@ -1274,6 +1276,22 @@ function Editor() {
                 },
               },
             },
+          }
+        : current,
+    );
+    setSelectedObjectId(object.id);
+  }
+
+  function rotateObject(object: LayoutObject) {
+    setLayout((current) =>
+      current
+        ? {
+            ...current,
+            objects: current.objects.map((item) =>
+              item.id === object.id
+                ? { ...item, rotation: ((item.rotation ?? 0) + 45) % 360 }
+                : item,
+            ),
           }
         : current,
     );
@@ -1683,7 +1701,8 @@ function Editor() {
                     top: `${(objectState.y / layout.roomLength) * 100}%`,
                     width: `${(object.width / layout.roomWidth) * 100}%`,
                     height: `${(object.height / layout.roomLength) * 100}%`,
-                  }}
+                    '--rotation': `${object.rotation ?? 0}deg`,
+                  } as CSSProperties}
                 >
                   <span className="object-label">{object.label}</span>
                   {selectedObjectId === object.id &&
@@ -1727,6 +1746,20 @@ function Editor() {
                       }}
                     >
                       Remove
+                    </button>
+                  ) : null}
+                  {selectedObjectId === object.id && !objectState.removed ? (
+                    <button
+                      className="object-rotate"
+                      type="button"
+                      aria-label={`Rotate ${object.label} 45 degrees`}
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        rotateObject(object);
+                      }}
+                    >
+                      ↻ Rotate
                     </button>
                   ) : null}
                 </div>

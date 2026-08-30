@@ -975,7 +975,7 @@ body.app-page {
 
 .editor-workspace {
   min-width: 0;
-  min-height: clamp(520px, calc(100vh - 155px), 760px);
+  min-height: clamp(560px, 72vh, 720px);
   padding: clamp(20px, 3vw, 36px);
   background: var(--card);
   border: 1px solid var(--rule);
@@ -1125,12 +1125,13 @@ body.app-page {
    aspect ratio derives the height, so limiting width limits both. */
 .room-editor.is-fit {
   width: min(100%, calc(var(--fit-height) * var(--room-ratio)));
-  --fit-height: clamp(240px, calc(100vh - 430px), 820px);
+  --fit-height: clamp(320px, calc(100vh - 350px), 620px);
 }
 
 .room-viewport {
   width: 100%;
-  max-height: clamp(240px, calc(100vh - 430px), 820px);
+  min-height: 320px;
+  max-height: clamp(320px, calc(100vh - 350px), 620px);
   overflow: auto;
   scrollbar-color: var(--grape) var(--panel);
 }
@@ -1187,7 +1188,8 @@ body.app-page {
     height 0.12s ease,
     opacity 0.35s ease,
     box-shadow 0.15s,
-    transform 0.7s cubic-bezier(0.3, 0.8, 0.3, 1);
+    transform 0.25s ease;
+  transform: rotate(var(--rotation, 0deg));
 }
 
 .editor-object:active {
@@ -1197,7 +1199,7 @@ body.app-page {
 .editor-object.is-removed {
   opacity: 0;
   pointer-events: none;
-  transform: scale(0.72);
+  transform: rotate(var(--rotation, 0deg)) scale(0.72);
 }
 
 .editor-object.is-selected {
@@ -1219,7 +1221,7 @@ body.app-page {
 }
 
 .editor-object.is-dragging {
-  transform: scale(1.02);
+  transform: rotate(var(--rotation, 0deg)) scale(1.02);
 }
 
 .object-label {
@@ -1236,6 +1238,11 @@ body.app-page {
 
 .editor-object.is-compact .object-remove {
   right: -6px;
+  bottom: -26px;
+}
+
+.editor-object.is-compact .object-rotate {
+  left: -6px;
   bottom: -26px;
 }
 
@@ -1286,6 +1293,37 @@ body.app-page {
 }
 
 .object-remove:focus-visible {
+  outline: 3px solid rgba(108, 63, 209, 0.2);
+  outline-offset: 2px;
+}
+
+.object-rotate {
+  position: absolute;
+  left: 6px;
+  bottom: 4px;
+  z-index: 8;
+  padding: 5px 8px;
+  color: var(--ink-70);
+  background: #fff;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  box-shadow: 0 6px 16px rgba(51, 33, 92, 0.12);
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.object-rotate:hover {
+  color: #fff;
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+.object-rotate:focus-visible {
   outline: 3px solid rgba(108, 63, 209, 0.2);
   outline-offset: 2px;
 }
@@ -1478,6 +1516,11 @@ body.app-page {
 
   .editor-workspace {
     min-height: 0;
+  }
+
+  .room-viewport {
+    min-height: 240px;
+    max-height: 65vh;
   }
 
   .editor-sidebar {
