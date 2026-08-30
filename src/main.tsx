@@ -123,6 +123,20 @@ function withTimeline(
   };
 }
 
+function getObjectBlockState(
+  layout: StoredLayout,
+  blockId: string,
+  object: LayoutObject,
+): ObjectBlockState {
+  return (
+    layout.timeline.objectStates[blockId]?.[object.id] ?? {
+      x: object.x,
+      y: object.y,
+      removed: false,
+    }
+  );
+}
+
 function generateStartingLayout(intake: IntakeData): StartingLayout {
   const margin = Math.min(4, intake.roomWidth / 10, intake.roomLength / 10);
   const stageWidth = Math.min(16, intake.roomWidth * 0.3);
@@ -260,6 +274,7 @@ function Editor() {
   const [layout, setLayout] = useState<StoredLayout | null>(getSavedLayout);
   const [dragging, setDragging] = useState<{
     id: string;
+    blockId: string;
     offsetX: number;
     offsetY: number;
     width: number;
@@ -274,6 +289,9 @@ function Editor() {
   const [playheadMinutes, setPlayheadMinutes] = useState(timelineStart);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isScrubbing, setIsScrubbing] = useState(false);
+  const [selectedObjectId, setSelectedObjectId] = useState<string | null>(
+    null,
+  );
 
   useEffect(() => {
     if (layout) {
@@ -319,11 +337,22 @@ function Editor() {
         current
           ? {
               ...current,
-              objects: current.objects.map((object) =>
-                object.id === activeDrag.id
-                  ? { ...object, x: nextX, y: nextY }
-                  : object,
-              ),
+              timeline: {
+                ...current.timeline,
+                objectStates: {
+                  ...current.timeline.objectStates,
+                  [activeDrag.blockId]: {
+                    ...current.timeline.objectStates[activeDrag.blockId],
+                    [activeDrag.id]: {
+                      ...current.timeline.objectStates[activeDrag.blockId][
+                        activeDrag.id
+                      ],
+                      x: nextX,
+                      y: nextY,
+                    },
+                  },
+                },
+              },
             }
           : current,
       );
@@ -418,43 +447,85 @@ function Editor() {
     );
   }
 
+  const activeLayout = layout;
+
   function addObject(kind: ObjectKind) {
+    const object = newObject(
+      kind,
+      activeLayout.roomWidth,
+      activeLayout.roomLength,
+      activeLayout.objects.length + 1,
+    );
+
     setLayout((current) => {
       if (!current) {
         return current;
       }
 
-      const object = newObject(
-        kind,
-        current.roomWidth,
-        current.roomLength,
-        current.objects.length + 1,
+      const objectStates = Object.fromEntries(
+        current.timeline.blocks.map((block) => [
+          block.id,
+          {
+            ...current.timeline.objectStates[block.id],
+            [object.id]: {
+              x: object.x,
+              y: object.y,
+              removed: false,
+            },
+          },
+        ]),
       );
-      return { ...current, objects: [...current.objects, object] };
+
+      return {
+        ...current,
+        objects: [...current.objects, object],
+        timeline: {
+          ...current.timeline,
+          objectStates,
+        },
+      };
     });
+    setSelectedObjectId(object.id);
   }
 
   function handlePointerDown(
     event: ReactPointerEvent<HTMLDivElement>,
     object: LayoutObject,
   ) {
-    if (event.button !== 0 || !roomRef.current || !layout) {
+    if (
+      event.button !== 0 ||
+      !roomRef.current ||
+      !layout ||
+      isPlaying ||
+      isScrubbing
+    ) {
+      return;
+    }
+
+    const objectState = getObjectBlockState(
+      activeLayout,
+      currentBlock.id,
+      object,
+    );
+    if (objectState.removed) {
       return;
     }
 
     const bounds = roomRef.current.getBoundingClientRect();
-    const roomWidth = layout.roomWidth;
-    const roomLength = layout.roomLength;
+    const roomWidth = activeLayout.roomWidth;
+    const roomLength = activeLayout.roomLength;
     const pointerX =
       ((event.clientX - bounds.left) / bounds.width) * roomWidth;
     const pointerY =
       ((event.clientY - bounds.top) / bounds.height) * roomLength;
 
     event.preventDefault();
+    setSelectedObjectId(object.id);
     setDragging({
       id: object.id,
-      offsetX: pointerX - object.x,
-      offsetY: pointerY - object.y,
+      blockId: currentBlock.id,
+      offsetX: pointerX - objectState.x,
+      offsetY: pointerY - objectState.y,
       width: object.width,
       height: object.height,
     });
@@ -466,10 +537,48 @@ function Editor() {
         playheadMinutes >= block.startMinutes &&
         playheadMinutes < block.endMinutes,
     ) ?? layout.timeline.blocks[layout.timeline.blocks.length - 1];
+  const selectedObject = layout.objects.find(
+    (object) => object.id === selectedObjectId,
+  );
+  const selectedObjectState = selectedObject
+    ? getObjectBlockState(layout, currentBlock.id, selectedObject)
+    : null;
   const playheadProgress =
     timelineEnd === timelineStart
       ? 0
       : (playheadMinutes - timelineStart) / (timelineEnd - timelineStart);
+
+  function toggleSelectedObjectRemoval() {
+    if (!selectedObject) {
+      return;
+    }
+
+    const currentState = getObjectBlockState(
+      activeLayout,
+      currentBlock.id,
+      selectedObject,
+    );
+    setLayout((current) =>
+      current
+        ? {
+            ...current,
+            timeline: {
+              ...current.timeline,
+              objectStates: {
+                ...current.timeline.objectStates,
+                [currentBlock.id]: {
+                  ...current.timeline.objectStates[currentBlock.id],
+                  [selectedObject.id]: {
+                    ...currentState,
+                    removed: !currentState.removed,
+                  },
+                },
+              },
+            },
+          }
+        : current,
+    );
+  }
 
   function handleTimelinePointerDown(
     event: ReactPointerEvent<HTMLDivElement>,
@@ -485,6 +594,7 @@ function Editor() {
       Math.min(1, (event.clientX - bounds.left) / bounds.width),
     );
     setIsPlaying(false);
+    setDragging(null);
     setIsScrubbing(true);
     setPlayheadMinutes(
       timelineStart + (timelineEnd - timelineStart) * position,
@@ -538,6 +648,31 @@ function Editor() {
             ))}
           </div>
 
+          <div className="selected-object-panel" aria-live="polite">
+            <p className="tool-list-heading">Selected object</p>
+            {selectedObject && selectedObjectState ? (
+              <>
+                <strong>{selectedObject.label}</strong>
+                <span className="selected-object-block">
+                  {currentBlock.label} block
+                </span>
+                <button
+                  className="selected-object-action"
+                  type="button"
+                  onClick={toggleSelectedObjectRemoval}
+                >
+                  {selectedObjectState.removed
+                    ? 'Bring back in this block'
+                    : 'Remove from this block'}
+                </button>
+              </>
+            ) : (
+              <span className="selected-object-empty">
+                Select an object on the plan to edit its state.
+              </span>
+            )}
+          </div>
+
           <div className="editor-sidebar-spacer" />
           <div className="object-count">
             <strong>{layout.objects.length}</strong>
@@ -574,40 +709,46 @@ function Editor() {
             <span className="room-dimension room-dimension-length">
               {layout.roomLength} ft
             </span>
-            {layout.objects.map((object) => (
-              (() => {
-                const objectState =
-                  layout.timeline.objectStates[currentBlock.id]?.[object.id] ??
-                  {
-                    x: object.x,
-                    y: object.y,
-                    removed: false,
-                  };
+            {layout.objects.map((object) => {
+              const objectState = getObjectBlockState(
+                layout,
+                currentBlock.id,
+                object,
+              );
 
-                return (
-                  <div
-                    className={`editor-object editor-${object.kind}${
-                      dragging?.id === object.id ? ' is-dragging' : ''
-                    }${objectState.removed ? ' is-removed' : ''}`}
-                    key={object.id}
-                    role="button"
-                    tabIndex={objectState.removed ? -1 : 0}
-                    title={`${object.label} · drag to move`}
-                    aria-label={`${object.label}, drag to move`}
-                    aria-hidden={objectState.removed}
-                    onPointerDown={(event) => handlePointerDown(event, object)}
-                    style={{
-                      left: `${(objectState.x / layout.roomWidth) * 100}%`,
-                      top: `${(objectState.y / layout.roomLength) * 100}%`,
-                      width: `${(object.width / layout.roomWidth) * 100}%`,
-                      height: `${(object.height / layout.roomLength) * 100}%`,
-                    }}
-                  >
-                    {object.label}
-                  </div>
-                );
-              })()
-            ))}
+              return (
+                <div
+                  className={`editor-object editor-${object.kind}${
+                    dragging?.id === object.id ? ' is-dragging' : ''
+                  }${
+                    selectedObjectId === object.id ? ' is-selected' : ''
+                  }${objectState.removed ? ' is-removed' : ''}`}
+                  key={object.id}
+                  role="button"
+                  tabIndex={objectState.removed ? -1 : 0}
+                  title={`${object.label} · ${
+                    objectState.removed
+                      ? 'removed from this block'
+                      : 'drag to move'
+                  }`}
+                  aria-label={`${object.label}, ${
+                    objectState.removed
+                      ? 'removed from this block'
+                      : 'drag to move'
+                  }`}
+                  aria-hidden={objectState.removed}
+                  onPointerDown={(event) => handlePointerDown(event, object)}
+                  style={{
+                    left: `${(objectState.x / layout.roomWidth) * 100}%`,
+                    top: `${(objectState.y / layout.roomLength) * 100}%`,
+                    width: `${(object.width / layout.roomWidth) * 100}%`,
+                    height: `${(object.height / layout.roomLength) * 100}%`,
+                  }}
+                >
+                  {object.label}
+                </div>
+              );
+            })}
           </div>
           <p className="workspace-note">
             Drag objects to position them. The layout saves in this browser.
