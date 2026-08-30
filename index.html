@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Plan Genie — plan your event before you run it</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#FFF7EC;
+    --ink:#33215C;
+    --ink-70:#6A5A88;
+    --ink-40:#A79BBD;
+    --grape:#6C3FD1;
+    --grape-dk:#5A2FBA;
+    --teal:#17A79E;
+    --teal-soft:rgba(23,167,158,.13);
+    --amber:#FFB23C;
+    --amber-soft:rgba(255,178,60,.2);
+    --coral:#E5483A;
+    --coral-soft:rgba(229,72,58,.12);
+    --card:#FFFFFF;
+    --panel:#F7F5FC;
+    --rule:rgba(51,33,92,.13);
+    --rule-2:rgba(51,33,92,.08);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{background:var(--bg);color:var(--ink);
+    font-family:"Nunito",system-ui,sans-serif;font-weight:600;-webkit-font-smoothing:antialiased}
+  .screen{height:100dvh;display:grid;grid-template-rows:auto 1fr;overflow:hidden}
+
+  /* ---------- nav ---------- */
+  .bar{display:flex;align-items:center;justify-content:space-between;gap:20px;
+    padding:clamp(12px,2vh,24px) clamp(16px,3.4vw,50px)}
+  .mark{display:flex;align-items:center;gap:10px}
+  .mark svg{width:32px;height:32px;flex:0 0 auto}
+  .mark span{font-family:"Fredoka",sans-serif;font-weight:600;font-size:21px;color:var(--grape)}
+  .bar nav{display:flex;align-items:center;gap:clamp(16px,2.4vw,32px)}
+  .bar nav a{font-size:15px;color:var(--ink);text-decoration:none;font-weight:700;opacity:.72}
+  .bar nav a:hover{opacity:1}
+  @media (max-width:880px){.bar nav{display:none}}
+
+  /* ---------- hero ---------- */
+  .hero{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);
+    align-items:center;gap:clamp(18px,2.6vw,38px);
+    padding-left:clamp(16px,3.4vw,50px);min-height:0;overflow:hidden}
+
+  h1{font-family:"Fredoka",sans-serif;font-weight:600;
+    font-size:clamp(36px,4.8vw,66px);line-height:1.03;letter-spacing:-.025em}
+  h1 .hl{position:relative;white-space:nowrap;z-index:0}
+  .hl::after{content:"";position:absolute;left:-2px;right:-2px;bottom:.06em;height:.28em;
+    background:var(--amber);border-radius:6px;z-index:-1}
+
+  .sub{margin-top:clamp(14px,2.6vh,24px);font-size:clamp(15px,1.2vw,19px);
+    line-height:1.45;color:var(--ink-70);max-width:32ch}
+  .sub b{color:var(--ink);font-weight:800}
+
+  .btn{margin-top:clamp(20px,3.4vh,34px);background:var(--grape);color:#fff;text-decoration:none;
+    font-family:"Fredoka",sans-serif;font-weight:600;font-size:18px;
+    padding:16px 34px;border-radius:999px;display:inline-flex;align-items:center;gap:10px;
+    box-shadow:0 5px 0 var(--grape-dk);transition:transform .12s,box-shadow .12s}
+  .btn:hover{transform:translateY(-2px);box-shadow:0 7px 0 var(--grape-dk)}
+  .btn:active{transform:translateY(4px);box-shadow:0 1px 0 var(--grape-dk)}
+
+  .avail{margin-top:clamp(14px,2.6vh,26px);display:flex;align-items:center;gap:9px;
+    font-size:14px;color:var(--ink-70)}
+  .avail .check{width:19px;height:19px;border-radius:50%;background:var(--teal);
+    display:grid;place-items:center;flex:0 0 auto}
+  .avail .check::after{content:"";width:7px;height:3.5px;border-left:2.2px solid #fff;
+    border-bottom:2.2px solid #fff;transform:rotate(-45deg) translate(1px,-1px)}
+
+  /* ---------- app window ---------- */
+  .demo{position:relative;height:100%;min-height:0;display:flex;align-items:center;justify-content:flex-end}
+  .backdrop{position:absolute;right:0;top:5%;bottom:5%;left:8%;border-radius:22px 0 0 22px;overflow:hidden;
+    background:radial-gradient(120% 100% at 76% 18%, #8E6BF0 0%, #6C3FD1 40%, #46279C 74%, #33215C 100%)}
+  .backdrop::after{content:"";position:absolute;inset:0;
+    background-image:radial-gradient(rgba(255,255,255,.26) 1px,transparent 1.4px);
+    background-size:15px 15px;opacity:.45}
+  .swatch{position:absolute;left:0;top:15%;bottom:15%;width:10%;
+    background:linear-gradient(180deg,#FFD98A,#FFB23C);border-radius:14px 0 0 14px}
+
+  .window{position:relative;z-index:2;margin-left:auto;width:96.5%;max-height:90%;
+    background:var(--card);border-radius:16px 0 0 16px;overflow:hidden;
+    box-shadow:0 34px 64px -36px rgba(51,33,92,.6);
+    display:flex;flex-direction:column;font-size:12px}
+
+  /* title bar */
+  .titlebar{display:flex;align-items:center;gap:12px;padding:9px 13px;
+    border-bottom:1px solid var(--rule-2);background:#FCFBFE}
+  .lights{display:flex;gap:6px}
+  .lights i{width:10px;height:10px;border-radius:50%;display:block}
+  .lights .r{background:#E9695C}.lights .y{background:#EEBA55}.lights .g{background:#69C07E}
+  .doc{font-weight:800;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .doc small{font-weight:600;color:var(--ink-40)}
+  .titlebar .right{margin-left:auto;display:flex;align-items:center;gap:7px}
+  .tb-btn{border:1px solid var(--rule);border-radius:7px;padding:5px 11px;font-size:11.5px;font-weight:700;color:var(--ink-70)}
+  .tb-btn.primary{background:var(--grape);border-color:var(--grape);color:#fff}
+
+  /* body: sidebar + canvas */
+  .app{display:grid;grid-template-columns:clamp(96px,10.5vw,140px) minmax(0,1fr);min-height:0}
+  .side{border-right:1px solid var(--rule-2);background:var(--panel);padding:10px 9px;
+    display:flex;flex-direction:column;gap:7px;min-width:0}
+  .side h4{font-size:9.5px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;
+    color:var(--ink-40);margin-bottom:1px}
+  .item{display:flex;align-items:center;gap:7px;background:#fff;border:1px solid var(--rule-2);
+    border-radius:7px;padding:6px 8px;font-size:11px;font-weight:700;color:var(--ink-70);
+    white-space:nowrap;overflow:hidden}
+  .item .sw{width:12px;height:12px;border-radius:3px;flex:0 0 auto}
+  .item .sw.circle{border-radius:50%;border:2px solid #B9A8DE;background:#fff}
+  .item.sel{border-color:var(--grape);box-shadow:0 0 0 2px rgba(108,63,209,.13);color:var(--ink)}
+  .side .spacer{flex:1}
+  .cap{background:#fff;border:1px solid var(--rule-2);border-radius:7px;padding:7px 8px}
+  .cap b{display:block;font-family:"Fredoka",sans-serif;font-weight:600;font-size:15px}
+  .cap span{font-size:9.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-40)}
+
+  .canvas{padding:10px 12px 11px;display:flex;flex-direction:column;gap:8px;min-width:0}
+
+  /* floor plan */
+  .plan-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .plan-head .t{font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-40)}
+  .scale{display:flex;align-items:center;gap:6px;font-size:10px;font-weight:700;color:var(--ink-40)}
+  .scale .ruler{width:40px;height:6px;border:1px solid var(--ink-40);border-top:0}
+
+  .room{position:relative;width:100%;aspect-ratio:16/8.4;background:#FDFCFF;
+    border:1px solid var(--rule);border-radius:8px;overflow:hidden}
+  .room::before{content:"";position:absolute;inset:0;
+    background-image:linear-gradient(rgba(108,63,209,.07) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(108,63,209,.07) 1px,transparent 1px);
+    background-size:5% 8.33%}
+  .lbl{font-size:9px;font-weight:800;letter-spacing:.03em;text-transform:uppercase}
+
+  .dim{position:absolute;color:var(--ink-40);font-size:8.5px;font-weight:800;letter-spacing:.05em}
+  .dimline{position:absolute;background:var(--ink-40);opacity:.45}
+
+  .zone{position:absolute;border-radius:4px;padding:3px 5px;
+    transition:width .8s cubic-bezier(.3,.8,.3,1),height .8s cubic-bezier(.3,.8,.3,1),
+      right .8s cubic-bezier(.3,.8,.3,1),top .8s cubic-bezier(.3,.8,.3,1),
+      background .35s,border-color .35s,color .35s}
+  .zone.idle{background:rgba(51,33,92,.04);border:1px dashed rgba(51,33,92,.22);color:var(--ink-40)}
+  .zone.plan{background:var(--amber-soft);border:1px dashed #D8930F;color:#96620A}
+  .zone.ok{background:var(--teal-soft);border:1px dashed var(--teal);color:#0E7C75}
+  .zone.hot{background:var(--coral-soft);border:1.5px solid var(--coral);color:var(--coral)}
+
+  .solid{position:absolute;background:var(--grape);color:#fff;border-radius:4px;
+    display:flex;align-items:center;justify-content:center;
+    transition:right .8s cubic-bezier(.3,.8,.3,1),top .8s cubic-bezier(.3,.8,.3,1)}
+  .door{position:absolute;background:var(--teal);border-radius:2px}
+  .door-lbl{position:absolute;color:#0E7C75}
+  .table{position:absolute;border-radius:50%;background:#fff;border:1.5px solid #B9A8DE;
+    transition:opacity .5s,transform .7s cubic-bezier(.3,.8,.3,1)}
+  .table.gone{opacity:0;transform:scale(.3)}
+  .path{position:absolute;height:2px;border-radius:2px;opacity:.7;
+    background:repeating-linear-gradient(90deg,var(--teal) 0 6px,transparent 6px 12px);
+    transition:background .3s,opacity .3s}
+  .path.blocked{opacity:1;background:repeating-linear-gradient(90deg,var(--coral) 0 6px,transparent 6px 12px)}
+  .path-lbl{position:absolute;font-size:8.5px;font-weight:800;color:#0E7C75;transition:color .3s}
+  .path-lbl.blocked{color:var(--coral)}
+
+  /* time ruler */
+  .ruler-wrap{display:flex;flex-direction:column;gap:3px}
+  .ticks{position:relative;height:12px;border-bottom:1px solid var(--rule-2)}
+  .tick{position:absolute;top:0;font-size:8.5px;font-weight:800;color:var(--ink-40);transform:translateX(-50%)}
+  .tick::after{content:"";position:absolute;left:50%;bottom:-4px;width:1px;height:4px;background:var(--rule)}
+  .track{position:relative;height:24px;display:flex;gap:3px}
+  .block{border-radius:5px;background:#EFEAF9;display:flex;align-items:center;
+    padding-left:8px;font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;
+    color:var(--ink-40);transition:background .3s,color .3s;overflow:hidden;white-space:nowrap}
+  .block.on{background:var(--grape);color:#fff}
+  .block.on.alarm{background:var(--coral)}
+  .playhead{position:absolute;top:-16px;bottom:-3px;width:2px;background:var(--ink);
+    border-radius:2px;transition:left .1s linear;z-index:3}
+  .playhead::before{content:"";position:absolute;top:-4px;left:-3px;width:8px;height:8px;
+    border-radius:2px;background:var(--ink)}
+  .playhead.alarm,.playhead.alarm::before{background:var(--coral)}
+
+  /* problems + genie row */
+  .status{display:flex;align-items:center;gap:8px;border-top:1px solid var(--rule-2);padding-top:8px}
+  .badge{display:inline-flex;align-items:center;gap:6px;border-radius:6px;padding:4px 9px;
+    font-size:10.5px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;
+    background:var(--teal-soft);color:#0E7C75;flex:0 0 auto;transition:background .3s,color .3s}
+  .badge.alarm{background:var(--coral-soft);color:var(--coral)}
+  .status .msg{font-size:11.5px;font-weight:700;color:var(--ink-70);line-height:1.3;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .status .msg.alarm{color:var(--coral)}
+
+  .assist{display:flex;align-items:flex-start;gap:8px;background:#F5F1FE;
+    border:1px solid rgba(108,63,209,.18);border-radius:8px;padding:8px 10px;
+    opacity:0;transform:translateY(4px);transition:opacity .3s,transform .3s}
+  .assist.show{opacity:1;transform:none}
+  .assist .av{width:26px;height:26px;border-radius:50%;flex:0 0 auto;background:#EAE1FB}
+  .assist .txt{font-size:11.5px;font-weight:700;line-height:1.32;color:var(--ink)}
+  .assist .txt b{display:block;font-family:"Fredoka",sans-serif;font-weight:600;
+    font-size:10.5px;color:var(--grape);letter-spacing:.02em;margin-bottom:1px}
+  .assist .apply{margin-left:auto;align-self:center;flex:0 0 auto;background:var(--grape);
+    color:#fff;border-radius:6px;padding:5px 11px;font-size:10.5px;font-weight:800}
+
+  /* responsive */
+  @media (max-width:960px){
+    .hero{grid-template-columns:1fr;align-content:center;gap:14px;padding:0 18px}
+    .backdrop,.swatch{display:none}
+    .window{border-radius:14px;width:100%;max-height:none;border:1px solid var(--rule)}
+    .side{display:none}
+    .app{grid-template-columns:1fr}
+    h1{font-size:clamp(30px,8.4vw,44px)}
+    .sub{max-width:100%;font-size:15px}
+    .avail{display:none}
+    .btn{padding:13px 28px;font-size:16px;margin-top:18px}
+  }
+  @media (max-height:640px){.avail{display:none}}
+  a:focus-visible{outline:3px solid var(--grape);outline-offset:3px;border-radius:8px}
+  @media (prefers-reduced-motion:reduce){*{animation:none !important;transition:none !important}}
+</style>
+</head>
+<body>
+<div class="screen">
+
+  <header class="bar">
+    <div class="mark">
+      <svg viewBox="0 0 64 64" aria-hidden="true">
+        <path d="M32 7c9 0 15 6 15 14 0 7-5 10-5 15H22c0-5-5-8-5-15C17 13 23 7 32 7Z" fill="#6C3FD1"/>
+        <circle cx="26" cy="20" r="3" fill="#fff"/><circle cx="38" cy="20" r="3" fill="#fff"/>
+        <path d="M22 38h20l6 14c-5 4-27 4-32 0l6-14Z" fill="#17A79E"/>
+        <rect x="20" y="34" width="24" height="6" rx="3" fill="#FFB23C"/>
+      </svg>
+      <span>Plan Genie</span>
+    </div>
+    <nav>
+      <a href="#">How it works</a>
+      <a href="#">Templates</a>
+      <a href="#">For venues</a>
+    </nav>
+  </header>
+
+  <main class="hero">
+
+    <section>
+      <h1>Plan your event<br>before you <span class="hl">run it</span>.</h1>
+      <p class="sub">Lay out the room, add your schedule, and watch the day play forward. <b>Plan Genie catches the problems before your guests do.</b></p>
+      <a href="/app" class="btn">Use it free <span>→</span></a>
+      <p class="avail"><i class="check"></i> Runs in your browser · Share a read-only plan with your crew</p>
+    </section>
+
+    <section class="demo" aria-label="Product preview">
+      <div class="backdrop"><i class="swatch"></i></div>
+
+      <div class="window">
+
+        <div class="titlebar">
+          <div class="lights"><i class="r"></i><i class="y"></i><i class="g"></i></div>
+          <div class="doc">Riverside Hall <small>· Community iftar · 180 guests</small></div>
+          <div class="right">
+            <span class="tb-btn">Share</span>
+            <span class="tb-btn primary">Save</span>
+          </div>
+        </div>
+
+        <div class="app">
+          <aside class="side">
+            <h4>Add to plan</h4>
+            <div class="item"><i class="sw circle"></i>Round table</div>
+            <div class="item"><i class="sw" style="background:#6C3FD1"></i>Stage</div>
+            <div class="item sel"><i class="sw" style="background:#6C3FD1"></i>Buffet</div>
+            <div class="item"><i class="sw" style="background:#FFB23C"></i>Prayer zone</div>
+            <div class="item"><i class="sw" style="background:#17A79E"></i>Entrance</div>
+            <div class="spacer"></div>
+            <div class="cap"><b id="capNum">180</b><span>Seats placed</span></div>
+          </aside>
+
+          <div class="canvas">
+
+            <div class="plan-head">
+              <span class="t">Floor plan · Main hall</span>
+              <span class="scale"><i class="ruler"></i>20 ft</span>
+            </div>
+
+            <div class="room" id="room">
+              <div class="dimline" style="left:6%;top:3%;width:88%;height:1px"></div>
+              <div class="dim" style="left:47%;top:4.5%;background:#FDFCFF;padding:0 4px">72 ft</div>
+              <div class="dimline" style="left:3%;top:8%;width:1px;height:84%"></div>
+              <div class="dim" style="left:1.5%;top:46%;transform:rotate(-90deg);background:#FDFCFF">44 ft</div>
+
+              <div class="solid lbl" style="left:34%;top:11%;width:32%;height:11%">Stage</div>
+              <div class="door" style="left:6.5%;top:44%;width:1.6%;height:16%"></div>
+              <div class="door-lbl lbl" style="left:9.5%;top:46%">Entrance</div>
+
+              <div class="zone lbl" id="zPrayer" style="left:9%;top:70%;width:38%;height:24%">Prayer area · 90 people</div>
+              <div class="solid lbl" id="buffet" style="right:5%;top:24%;width:8%;height:32%;writing-mode:vertical-rl">Buffet</div>
+              <div class="zone idle lbl" id="zQueue" style="right:15%;top:26%;width:11%;height:28%">Queue</div>
+
+              <div class="path" id="path" style="left:9%;top:80%;width:34%"></div>
+              <div class="path-lbl" id="pathLbl" style="left:9%;top:63%">Entrance → prayer area</div>
+
+              <div class="table" style="left:13%;top:27%;width:10%;aspect-ratio:1"></div>
+              <div class="table" style="left:31%;top:27%;width:10%;aspect-ratio:1"></div>
+              <div class="table" style="left:49%;top:27%;width:10%;aspect-ratio:1"></div>
+              <div class="table t-clear" style="left:13%;top:47%;width:10%;aspect-ratio:1"></div>
+              <div class="table t-clear" style="left:31%;top:47%;width:10%;aspect-ratio:1"></div>
+              <div class="table" style="left:49%;top:47%;width:10%;aspect-ratio:1"></div>
+            </div>
+
+            <div class="ruler-wrap">
+              <div class="ticks">
+                <span class="tick" style="left:0%">6:00</span>
+                <span class="tick" style="left:20%">6:15</span>
+                <span class="tick" style="left:40%">6:30</span>
+                <span class="tick" style="left:60%">6:45</span>
+                <span class="tick" style="left:80%">7:00</span>
+                <span class="tick" style="left:99%">7:15</span>
+              </div>
+              <div class="track">
+                <div class="block" style="flex:35">Talk</div>
+                <div class="block" style="flex:25">Dinner</div>
+                <div class="block" style="flex:15">Prayer</div>
+                <div class="playhead" id="playhead" style="left:0%"></div>
+              </div>
+            </div>
+
+            <div class="status">
+              <span class="badge" id="badge">0 problems</span>
+              <span class="msg" id="msg">Room works in this block</span>
+            </div>
+
+            <div class="assist" id="assist">
+              <svg class="av" viewBox="0 0 64 64" aria-hidden="true">
+                <circle cx="32" cy="32" r="32" fill="#EAE1FB"/>
+                <path d="M32 13c9 0 14 6 14 14 0 3-1 5-2 7H20c-1-2-2-4-2-7 0-8 5-14 14-14Z" fill="#6C3FD1"/>
+                <path d="M18 24c3-8 8-12 14-12s11 4 14 12c-4-4-8-6-14-6s-10 2-14 6Z" fill="#33215C"/>
+                <ellipse cx="32" cy="34" rx="13" ry="14" fill="#B58CF2"/>
+                <circle cx="27" cy="32" r="2.2" fill="#33215C"/><circle cx="37" cy="32" r="2.2" fill="#33215C"/>
+                <path d="M22 39c4 12 16 12 20 0 2 9-4 17-10 17s-12-8-10-17Z" fill="#E8E3F2"/>
+                <path d="M26 26c2-1.5 5-1.5 7 0M31 26c2-1.5 5-1.5 7 0" stroke="#33215C" stroke-width="2" stroke-linecap="round" fill="none"/>
+              </svg>
+              <span class="txt"><b>Plan Genie</b><span id="assistText">Move the buffet to the right wall to clear the path to the prayer area.</span></span>
+              <span class="apply">Apply</span>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<div id="root"></div>
+
+<script>
+(function(){
+  var START=18*60,END=19*60+15,SPAN=END-START,LOOP=18000;
+  var reduce=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var g=function(id){return document.getElementById(id)};
+  var el={playhead:g('playhead'),badge:g('badge'),msg:g('msg'),queue:g('zQueue'),
+    prayer:g('zPrayer'),buffet:g('buffet'),path:g('path'),pathLbl:g('pathLbl'),
+    assist:g('assist'),assistText:g('assistText'),capNum:g('capNum'),
+    blocks:[].slice.call(document.querySelectorAll('.block')),
+    clears:[].slice.call(document.querySelectorAll('.t-clear'))};
+
+  function render(mins){
+    el.playhead.style.left=((mins-START)/SPAN*100)+'%';
+
+    var phase = mins<18*60+35?0:(mins<19*60?1:2);
+    var teardown = mins>=18*60+32;
+    var conflict = mins>=18*60+38 && mins<18*60+48;
+    var fixed    = mins>=18*60+48;
+    var advising = mins>=18*60+40 && mins<18*60+56;
+
+    el.blocks.forEach(function(b,i){
+      b.classList.toggle('on',i===phase);
+      b.classList.toggle('alarm',i===phase&&conflict);
+    });
+    el.playhead.classList.toggle('alarm',conflict);
+    el.clears.forEach(function(t){t.classList.toggle('gone',teardown)});
+    el.capNum.textContent = teardown ? '120' : '180';
+
+    if(phase===0){
+      el.queue.className='zone idle lbl';
+      el.queue.style.right='15%';el.queue.style.top='26%';
+      el.queue.style.width='11%';el.queue.style.height='28%';
+      el.buffet.style.right='5%';el.buffet.style.top='24%';
+    }else if(conflict){
+      el.queue.className='zone hot lbl';
+      el.queue.style.right='15%';el.queue.style.top='32%';
+      el.queue.style.width='44%';el.queue.style.height='56%';
+    }else{
+      el.queue.className='zone ok lbl';
+      el.queue.style.right='7%';el.queue.style.top='20%';
+      el.queue.style.width='12%';el.queue.style.height='42%';
+      el.buffet.style.right='2.5%';el.buffet.style.top='20%';
+    }
+    el.prayer.className='zone lbl '+(conflict?'hot':(phase===0?'plan':'ok'));
+    el.path.classList.toggle('blocked',conflict);
+    el.pathLbl.classList.toggle('blocked',conflict);
+
+    el.badge.classList.toggle('alarm',conflict);
+    el.badge.textContent = conflict ? '1 problem' : '0 problems';
+    el.msg.classList.toggle('alarm',conflict);
+    el.msg.textContent = conflict
+      ? 'Buffet queue blocks the only path to the prayer area'
+      : fixed ? 'Path to the prayer area is clear'
+      : phase===0 ? 'Room works in this block'
+      : 'Dinner service open · 2 crew clearing tables 12–17';
+
+    el.assistText.textContent = conflict
+      ? 'Move the buffet to the right wall to clear the path to the prayer area.'
+      : 'Applied. The room now works all the way through prayer.';
+    el.assist.classList.toggle('show',advising);
+  }
+
+  if(reduce){render(18*60+42);return;}
+  var t0=performance.now();
+  (function tick(now){
+    render(Math.round(START+(((now-t0)%LOOP)/LOOP)*SPAN));
+    requestAnimationFrame(tick);
+  })(t0);
+})();
+</script>
+<script type="module" src="/src/main.tsx"></script>
+</body>
+</html>
