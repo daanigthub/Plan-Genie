@@ -713,6 +713,45 @@ function switchToProject(id: string): ProjectRecord | null {
   return project;
 }
 
+type SharedPlan = {
+  layout: StoredLayout;
+  blockId: string | null;
+};
+
+function createShareUrl(layout: StoredLayout, blockId: string | null): string {
+  const payload = encodeURIComponent(
+    JSON.stringify({
+      layout,
+      blockId,
+    }),
+  );
+  return `${window.location.origin}/share#plan=${btoa(payload)}`;
+}
+
+function getSharedPlan(): SharedPlan | null {
+  try {
+    const encoded = window.location.hash.match(/(?:^#|&)plan=([^&]+)/)?.[1];
+    if (!encoded) {
+      return null;
+    }
+    const parsed = JSON.parse(decodeURIComponent(atob(encoded))) as {
+      layout?: StartingLayout & { timeline?: TimelineState };
+      blockId?: string;
+    };
+    return parsed.layout
+      ? {
+          layout: withTimeline({
+            ...parsed.layout,
+            ...normalizeIntake(parsed.layout),
+          }),
+          blockId: parsed.blockId ?? null,
+        }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 const toolDefinitions: Array<{ kind: ObjectKind; label: string }> = [
   { kind: 'round-table', label: 'Round table' },
   { kind: 'rectangular-table', label: 'Rectangular table' },
@@ -836,6 +875,10 @@ function Editor() {
   const [customShape, setCustomShape] = useState<ObjectShape>('rect');
   const [customCategory, setCustomCategory] =
     useState<ObjectCategory>('object');
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [shareUrl, setShareUrl] = useState('');
+  const [shareNotice, setShareNotice] = useState('');
+  const shareInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (layout) {
@@ -1315,6 +1358,35 @@ function Editor() {
     setResizing(null);
   }
 
+  function openShareDialog() {
+    if (!layout) {
+      return;
+    }
+    const blockId =
+      layout.timeline.blocks.find(
+        (block) =>
+          playheadMinutes >= block.startMinutes &&
+          playheadMinutes < block.endMinutes,
+      )?.id ?? layout.timeline.blocks[layout.timeline.blocks.length - 1]?.id ?? null;
+    setShareUrl(createShareUrl(layout, blockId));
+    setShareNotice('');
+    setShareDialogOpen(true);
+  }
+
+  async function copyShareLink() {
+    if (!shareUrl) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setShareNotice('Link copied. Send it to your team.');
+    } catch {
+      shareInputRef.current?.focus();
+      shareInputRef.current?.select();
+      setShareNotice('Select the link and copy it to share with your team.');
+    }
+  }
+
   function handleTimelinePointerDown(
     event: ReactPointerEvent<HTMLDivElement>,
   ) {
@@ -1338,7 +1410,7 @@ function Editor() {
   }
 
   return (
-    <main className="editor-shell">
+    <main className={`editor-shell${shareDialogOpen ? ' is-sharing' : ''}`}>
       <header className="editor-header">
         <a className="back-link" href="/app">
           ← Intake
@@ -1767,10 +1839,19 @@ function Editor() {
             })}
             </div>
           </div>
-          <p className="workspace-note">
-            Drag objects to position them. Click a table to see its size,
-            resize from the corner, or remove it from this time block.
-          </p>
+          <div className="workspace-footer">
+            <p className="workspace-note">
+              Drag objects to position them. Click a table to see its size,
+              resize from the corner, or remove it from this time block.
+            </p>
+            <button
+              className="editor-done-button"
+              type="button"
+              onClick={openShareDialog}
+            >
+              Done <span aria-hidden="true">→</span>
+            </button>
+          </div>
         </section>
       </div>
 
@@ -1832,6 +1913,62 @@ function Editor() {
           </div>
         </div>
       </section>
+
+      {shareDialogOpen ? (
+        <div
+          className="share-dialog-backdrop"
+          role="presentation"
+          onClick={() => setShareDialogOpen(false)}
+        >
+          <section
+            className="share-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="share-dialog-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              className="share-dialog-close"
+              type="button"
+              onClick={() => setShareDialogOpen(false)}
+              aria-label="Close share dialog"
+            >
+              ×
+            </button>
+            <p className="sidebar-kicker">Team view</p>
+            <h2 id="share-dialog-title">Share this floor plan</h2>
+            <p>
+              Anyone with this link can view the plan on a phone. They will not
+              be able to edit your layout.
+            </p>
+            <label className="share-link-label" htmlFor="share-link">
+              Read-only link
+            </label>
+            <input
+              id="share-link"
+              ref={shareInputRef}
+              className="share-link-input"
+              value={shareUrl}
+              readOnly
+              onFocus={(event) => event.currentTarget.select()}
+            />
+            <div className="share-dialog-actions">
+              <button className="share-copy-button" type="button" onClick={copyShareLink}>
+                Copy link
+              </button>
+              <a
+                className="share-open-link"
+                href={shareUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open view
+              </a>
+            </div>
+            {shareNotice ? <p className="share-notice">{shareNotice}</p> : null}
+          </section>
+        </div>
+      ) : null}
     </main>
   );
 }
@@ -2118,13 +2255,123 @@ function IntakeForm() {
   );
 }
 
+function ShareView() {
+  const [sharedPlan] = useState<SharedPlan | null>(getSharedPlan);
+  const layout = sharedPlan?.layout ?? null;
+
+  if (!layout || layout.roomWidth <= 0 || layout.roomLength <= 0) {
+    return (
+      <main className="share-shell">
+        <section className="share-empty-card" aria-labelledby="share-empty-title">
+          <p className="eyebrow">Plan Genie</p>
+          <h1 id="share-empty-title">This plan link is missing or invalid.</h1>
+          <p>
+            Ask the organizer to create a new share link from the editor.
+          </p>
+          <a className="secondary-link" href="/app">
+            Create a plan
+          </a>
+        </section>
+      </main>
+    );
+  }
+
+  const currentBlock =
+    layout.timeline.blocks.find((block) => block.id === sharedPlan?.blockId) ??
+    layout.timeline.blocks[0];
+  const conflictIds = currentBlock
+    ? getConflictIds(layout, currentBlock.id)
+    : new Set<string>();
+
+  return (
+    <main className="share-shell">
+      <header className="share-header">
+        <a className="editor-brand" href="/">
+          <span className="brand-spark" aria-hidden="true">
+            ✦
+          </span>
+          <span>Plan Genie</span>
+        </a>
+        <span className="share-badge">Read-only view</span>
+      </header>
+
+      <section className="share-card" aria-labelledby="shared-plan-title">
+        <div className="share-card-heading">
+          <div>
+            <p className="eyebrow">Shared floor plan</p>
+            <h1 id="shared-plan-title">{eventTitle(layout)}</h1>
+            <p className="share-meta">
+              {hallTitle(layout)}
+              {layout.attendees > 0 ? ` · ${layout.attendees} attending` : ''}
+            </p>
+          </div>
+          <div className="share-dimensions">
+            <strong>
+              {layout.roomWidth}′ × {layout.roomLength}′
+            </strong>
+            <span>hall dimensions</span>
+          </div>
+        </div>
+
+        <div className="share-room-wrap">
+          <div
+            className="share-room"
+            style={{
+              aspectRatio: `${layout.roomWidth} / ${layout.roomLength}`,
+            }}
+          >
+            <div className="share-room-grid" aria-hidden="true" />
+            {layout.objects.map((object) => {
+              const objectState = currentBlock
+                ? getObjectBlockState(layout, currentBlock.id, object)
+                : { x: object.x, y: object.y, removed: false };
+              const objectShape = getObjectShape(object);
+              const objectCategory = getObjectCategory(object);
+
+              return (
+                <div
+                  className={`share-object share-shape-${objectShape} share-category-${objectCategory}${
+                    objectState.removed ? ' is-removed' : ''
+                  }${conflictIds.has(object.id) ? ' is-conflict' : ''}`}
+                  key={object.id}
+                  style={
+                    {
+                      left: `${(objectState.x / layout.roomWidth) * 100}%`,
+                      top: `${(objectState.y / layout.roomLength) * 100}%`,
+                      width: `${(object.width / layout.roomWidth) * 100}%`,
+                      height: `${(object.height / layout.roomLength) * 100}%`,
+                      '--rotation': `${object.rotation ?? 0}deg`,
+                    } as CSSProperties
+                  }
+                >
+                  <span>{object.label}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="share-footer">
+          <p>
+            {currentBlock
+              ? `Showing the ${currentBlock.label.toLowerCase()} arrangement.`
+              : 'Shared layout'}
+          </p>
+          <p>View-only link · Plan Genie</p>
+        </div>
+      </section>
+    </main>
+  );
+}
+
 function App() {
   const pathname = window.location.pathname;
   const isAppRoute = pathname === '/app' || pathname === '/app/';
   const isEditorRoute =
     pathname === '/app/editor' || pathname === '/app/editor/';
+  const isShareRoute = pathname === '/share' || pathname === '/share/';
 
-  if (!isAppRoute && !isEditorRoute) {
+  if (!isAppRoute && !isEditorRoute && !isShareRoute) {
     return null;
   }
 
@@ -2133,6 +2380,10 @@ function App() {
 
   if (isEditorRoute) {
     return <Editor />;
+  }
+
+  if (isShareRoute) {
+    return <ShareView />;
   }
 
   return <IntakeForm />;
